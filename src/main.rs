@@ -2,7 +2,7 @@
 extern crate log;
 
 use chrono::{DateTime, Duration, Utc};
-use futures::{future::ready, prelude::*};
+use futures::prelude::*;
 use gpsd_proto::UnifiedResponse;
 use std::env;
 use std::error::Error;
@@ -13,13 +13,13 @@ use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LinesCodec};
 
 fn iso8601_plus(st: &std::time::SystemTime, minutes: i64) -> String {
-    let dt: DateTime<Utc> = st.clone().into();
+    let dt: DateTime<Utc> = (*st).into();
     let dt_plus_day: DateTime<Utc> = dt + Duration::minutes(minutes);
     format!("{}", dt_plus_day.format("%Y-%m-%dT%H:%M:%SZ"))
 }
 
 fn iso8601(st: &std::time::SystemTime) -> String {
-    let dt: DateTime<Utc> = st.clone().into();
+    let dt: DateTime<Utc> = (*st).into();
     format!("{}", dt.format("%Y-%m-%dT%H:%M:%SZ"))
 }
 
