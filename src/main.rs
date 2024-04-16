@@ -8,9 +8,12 @@ use std::env;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::time::SystemTime;
+use std::{thread, time};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LinesCodec};
+
+extern crate exitcode;
 
 fn iso8601_plus(st: &std::time::SystemTime, minutes: i64) -> String {
     let dt: DateTime<Utc> = (*st).into();
@@ -25,55 +28,89 @@ fn iso8601(st: &std::time::SystemTime) -> String {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
-    let target_tcp_addr = &args[1];
     env_logger::init();
     info!("Starting");
+    let args: Vec<String> = env::args().collect();
+    let query = if args.len() < 2 { "help" } else { &args[1] };
 
-    let addr: SocketAddr = "127.0.0.1:2947".parse().unwrap();
+    match query {
+        "help" => {
+            println!("COD CoT generator: \nUsage: cot_sender [help|fake|gps] target_address:port");
+            std::process::exit(exitcode::OK);
+        }
+        "fake" => {
+            let target_tcp_addr = &args[2];
 
-    let stream = TcpStream::connect(&addr).await?;
-    let mut framed = Framed::new(stream, LinesCodec::new());
+            loop {
+                // No need for async here, just write and sleep
+                let st = SystemTime::now();
+                let now = iso8601(&st);
+                let tom = iso8601_plus(&st, 10);
+                write_xml(
+                    target_tcp_addr,
+                    "37.12345".to_string(),
+                    "-75.12345".to_string(),
+                    now,
+                    tom,
+                )
+                .await;
 
-    framed.send(gpsd_proto::ENABLE_WATCH_CMD).await?;
-    framed
-        .try_for_each(|line| async move {
-            trace!("Raw {line}");
+                let millis = time::Duration::from_millis(2000);
+                thread::sleep(millis);
+            }
+        }
+        "gps" => {
+            let addr: SocketAddr = "127.0.0.1:2947".parse().unwrap();
+            let target_tcp_addr = &args[2];
 
-            match serde_json::from_str(&line) {
-                Ok(rd) => match rd {
-                    UnifiedResponse::Version(v) => {
-                        if v.proto_major < gpsd_proto::PROTO_MAJOR_MIN {
-                            panic!("Gpsd major version mismatch");
+            let stream = TcpStream::connect(&addr).await?;
+            let mut framed = Framed::new(stream, LinesCodec::new());
+
+            framed.send(gpsd_proto::ENABLE_WATCH_CMD).await?;
+            framed
+                .try_for_each(|line| async move {
+                    trace!("Raw {line}");
+
+                    match serde_json::from_str(&line) {
+                        Ok(rd) => match rd {
+                            UnifiedResponse::Version(v) => {
+                                if v.proto_major < gpsd_proto::PROTO_MAJOR_MIN {
+                                    panic!("Gpsd major version mismatch");
+                                }
+                                info!("Gpsd version {} connected", v.rev);
+                            }
+                            UnifiedResponse::Devices(_) => {}
+                            UnifiedResponse::Watch(_) => {}
+                            UnifiedResponse::Device(d) => debug!("Device {d:?}"),
+                            UnifiedResponse::Tpv(t) => {
+                                // debug!("Tpv {t:?}");
+                                let lat = t.lat.unwrap().to_string();
+                                let lon = t.lon.unwrap().to_string();
+                                let point = format!("{lat},{lon}");
+                                info!("Point: {}", point);
+                                let st = SystemTime::now();
+                                let now = iso8601(&st);
+                                let tom = iso8601_plus(&st, 10);
+                                write_xml(target_tcp_addr, lat, lon, now, tom).await;
+                            }
+                            UnifiedResponse::Sky(_) => {}
+                            UnifiedResponse::Pps(_) => {}
+                            UnifiedResponse::Gst(_) => {}
+                        },
+                        Err(e) => {
+                            error!("Error decoding: {e}");
                         }
-                        info!("Gpsd version {} connected", v.rev);
-                    }
-                    UnifiedResponse::Devices(_) => {}
-                    UnifiedResponse::Watch(_) => {}
-                    UnifiedResponse::Device(d) => debug!("Device {d:?}"),
-                    UnifiedResponse::Tpv(t) => {
-                        // debug!("Tpv {t:?}");
-                        let lat = t.lat.unwrap().to_string();
-                        let lon = t.lon.unwrap().to_string();
-                        let point = format!("{lat},{lon}");
-                        info!("Point: {}", point);
-                        let st = SystemTime::now();
-                        let now = iso8601(&st);
-                        let tom = iso8601_plus(&st, 10);
-                        write_xml(target_tcp_addr, lat, lon, now, tom).await;
-                    }
-                    UnifiedResponse::Sky(_) => {}
-                    UnifiedResponse::Pps(_) => {}
-                    UnifiedResponse::Gst(_) => {}
-                },
-                Err(e) => {
-                    error!("Error decoding: {e}");
-                }
-            };
+                    };
 
-            Ok(())
-        })
-        .await?;
+                    Ok(())
+                })
+                .await?;
+        }
+        _ => {
+            println!("COD CoT generator: \nUsage: cot_sender [help|fake|gps] target_address:port");
+            std::process::exit(exitcode::OK);
+        }
+    };
 
     Ok(())
 }
