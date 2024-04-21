@@ -2,16 +2,12 @@
 extern crate log;
 
 use chrono::{DateTime, Duration, Utc};
-use futures::prelude::*;
-use gpsd_proto::UnifiedResponse;
 use std::env;
 use std::error::Error;
-use std::net::SocketAddr;
 use std::time::SystemTime;
 use std::{thread, time};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, Interest};
 use tokio::net::TcpStream;
-use tokio_util::codec::{Framed, LinesCodec};
 
 extern crate exitcode;
 
@@ -33,92 +29,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let query = if args.len() < 2 { "help" } else { &args[1] };
 
+    let target_tcp_addr = &args[2];
+    let mut stream = TcpStream::connect(&target_tcp_addr).await?;
     match query {
         "help" => {
             println!("COD CoT generator: \nUsage: cot_sender [help|fake|gps] target_address:port");
             std::process::exit(exitcode::OK);
         }
         "fake" => {
-            let target_tcp_addr = &args[2];
-
             loop {
+                let _ready = stream.ready(Interest::WRITABLE).await?;
                 // No need for async here, just write and sleep
                 let st = SystemTime::now();
                 let now = iso8601(&st);
                 let tom = iso8601_plus(&st, 10);
-                write_xml(
-                    target_tcp_addr,
-                    "37.12345".to_string(),
-                    "-75.12345".to_string(),
-                    now,
-                    tom,
-                )
-                .await;
-
-                let millis = time::Duration::from_millis(2000);
-                thread::sleep(millis);
-            }
-        }
-        "gps" => {
-            let addr: SocketAddr = "127.0.0.1:2947".parse().unwrap();
-            let target_tcp_addr = &args[2];
-
-            let stream = TcpStream::connect(&addr).await?;
-            let mut framed = Framed::new(stream, LinesCodec::new());
-
-            framed.send(gpsd_proto::ENABLE_WATCH_CMD).await?;
-            framed
-                .try_for_each(|line| async move {
-                    trace!("Raw {line}");
-
-                    match serde_json::from_str(&line) {
-                        Ok(rd) => match rd {
-                            UnifiedResponse::Version(v) => {
-                                if v.proto_major < gpsd_proto::PROTO_MAJOR_MIN {
-                                    panic!("Gpsd major version mismatch");
-                                }
-                                info!("Gpsd version {} connected", v.rev);
-                            }
-                            UnifiedResponse::Devices(_) => {}
-                            UnifiedResponse::Watch(_) => {}
-                            UnifiedResponse::Device(d) => debug!("Device {d:?}"),
-                            UnifiedResponse::Tpv(t) => {
-                                // debug!("Tpv {t:?}");
-                                let lat = t.lat.unwrap().to_string();
-                                let lon = t.lon.unwrap().to_string();
-                                let point = format!("{lat},{lon}");
-                                info!("Point: {}", point);
-                                let st = SystemTime::now();
-                                let now = iso8601(&st);
-                                let tom = iso8601_plus(&st, 10);
-                                write_xml(target_tcp_addr, lat, lon, now, tom).await;
-                            }
-                            UnifiedResponse::Sky(_) => {}
-                            UnifiedResponse::Pps(_) => {}
-                            UnifiedResponse::Gst(_) => {}
-                        },
-                        Err(e) => {
-                            error!("Error decoding: {e}");
-                        }
-                    };
-
-                    Ok(())
-                })
-                .await?;
-        }
-        _ => {
-            println!("COD CoT generator: \nUsage: cot_sender [help|fake|gps] target_address:port");
-            std::process::exit(exitcode::OK);
-        }
-    };
-
-    Ok(())
-}
-
-async fn write_xml(addr: &String, lat: String, lon: String, now: String, tom: String) {
-    let out = TcpStream::connect(addr).await;
-    let msg = format!(
-        "<?xml version=\"1.0\" standalone=\"yes\"?>
+                let msg = format!(
+                    "<?xml version=\"1.0\" standalone=\"yes\"?>
 <event
   how=\"m-s\"
   stale=\"{tom}\" start=\"{now}\" time=\"{now}\"
@@ -131,12 +57,24 @@ version=\"2.0\">
 <goal lat=\"37.3264235\" lon=\"-75.29052422\"/>
 <camera hfov=\"120\" rel_az=\"0\"/>
 </detail>
-<point ce=\"5\" hae=\"0.0\" lat=\"{lat}\" le=\"0.5\" lon=\"{lon}\" />
+<point ce=\"5\" hae=\"0.0\" lat=\"37.234234\" le=\"0.5\" lon=\"-75.123233\" />
 </event>
 ",
-        addr
-    );
-    debug!("XML: {}", msg);
-    let result = out.expect("REASON").write(msg.as_bytes()).await;
-    info!("XML write: success={:?}", result.is_ok());
+                    target_tcp_addr
+                );
+                debug!("XML: {}", msg);
+                let result = stream.write_all(msg.as_bytes()).await;
+                info!("XML write: success={:?}", result.is_ok());
+
+                let millis = time::Duration::from_millis(2000);
+                thread::sleep(millis);
+            }
+        }
+        _ => {
+            println!("COD CoT generator: \nUsage: cot_sender [help|fake|gps] target_address:port");
+            std::process::exit(exitcode::OK);
+        }
+    };
+
+    //Ok(())
 }
