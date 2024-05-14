@@ -18,14 +18,16 @@ struct Circle {
     radius: f64,
     center_lat: f64,
     center_long: f64,
+    speed: f64,
 }
 
 impl Circle {
-    fn new(radius: f64, center_lat: f64, center_long: f64) -> Circle {
+    fn new(radius: f64, center_lat: f64, center_long: f64, speed: f64) -> Circle {
         Circle {
             radius,
             center_lat,
             center_long,
+            speed,
         }
     }
 
@@ -46,6 +48,24 @@ impl Circle {
 
         let initial_bearing = y.atan2(x).to_degrees();
         (initial_bearing + 360.0) % 360.0
+    }
+
+    fn calculate_distance(&self, lat1: f64, long1: f64, lat2: f64, long2: f64) -> f64 {
+        let d_lat = (lat2 - lat1).to_radians();
+        let d_long = (long2 - long1).to_radians();
+
+        let a = (d_lat / 2.0).sin() * (d_lat / 2.0).sin()
+            + lat1.to_radians().cos()
+                * lat2.to_radians().cos()
+                * (d_long / 2.0).sin()
+                * (d_long / 2.0).sin();
+        let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
+
+        self.radius * c
+    }
+
+    fn calculate_speed(&self, distance: f64) -> f64 {
+        distance / self.speed
     }
 }
 
@@ -78,14 +98,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let lat: f64 = if args.len() == 4 {
                 f64::from_str(&args[3]).unwrap()
             } else {
-                37.0
+                34.1
             };
             let lon = if args.len() == 5 {
                 f64::from_str(&args[4]).unwrap()
             } else {
-                -75.0
+                -119.25
             };
-            let circle = Circle::new(10.0, lat, lon);
+            let circle = Circle::new(2.0, lat, lon, 40.0);
 
             loop {
                 let num_points = 100;
@@ -98,7 +118,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .calculate_coordinates(2.0 * PI * ((i + 1) as f64) / (num_points as f64));
                     let heading = circle.calculate_heading(lat, long, next_lat, next_long);
                     let _ready = stream.ready(Interest::WRITABLE).await?;
+                    let distance = circle.calculate_distance(lat, long, next_lat, next_long);
 
+                    let speed = circle.calculate_speed(distance);
                     // No need for async here, just write and sleep
                     let st = SystemTime::now();
                     let now = iso8601(&st);
@@ -112,7 +134,7 @@ type=\"a-f-S-X\"
 uid=\"{}\"
 version=\"2.0\">
 <detail>
-<track course=\"30.9\" heading=\"{heading}\" speed=\"1.36\" />
+<track course=\"30.9\" heading=\"{heading}\" speed=\"{speed:.4}\" />
 <status battery=\"59\" health=\"good\" />
 <goal lat=\"37.3264235\" lon=\"-75.29052422\"/>
 <camera hfov=\"120\" rel_az=\"0\"/>
