@@ -65,7 +65,7 @@ impl Circle {
     }
 
     fn calculate_speed(&self, distance: f64) -> f64 {
-        distance / self.speed
+        distance / self.speed * 10000000.0
     }
 }
 
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("COD CoT generator: \nUsage: cot_sender [help|fake|gps] target_address:port");
             std::process::exit(exitcode::OK);
         }
-        "fake" => {
+        "status" => {
             let lat: f64 = if args.len() == 4 {
                 f64::from_str(&args[3]).unwrap()
             } else {
@@ -121,6 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let distance = circle.calculate_distance(lat, long, next_lat, next_long);
 
                     let speed = circle.calculate_speed(distance);
+                    //let speed = 5.0;
                     // No need for async here, just write and sleep
                     let st = SystemTime::now();
                     let now = iso8601(&st);
@@ -134,16 +135,18 @@ type=\"a-f-S-X\"
 uid=\"{}\"
 version=\"2.0\">
 <detail>
-<track course=\"30.9\" heading=\"{heading}\" speed=\"{speed:.4}\" />
+<track course=\"{heading}\" heading=\"{heading}\" speed=\"{speed:.4}\" />
 <status battery=\"59\" health=\"good\" />
 <goal lat=\"37.3264235\" lon=\"-75.29052422\"/>
 <camera hfov=\"120\" rel_az=\"0\"/>
+<_flow-tags_ Ss_X3_ASV_h53.status=\"{now}\"/>
 </detail>
 <point ce=\"5\" hae=\"0.0\" lat=\"{lat}\" le=\"0.5\" lon=\"{long}\" />
 </event>
 ",
                         target_tcp_addr
                     );
+
                     debug!("XML: {}", msg);
                     let result = stream.write_all(msg.as_bytes()).await;
                     info!("XML write: success={:?}", result.is_ok());
@@ -153,8 +156,57 @@ version=\"2.0\">
                 }
             }
         }
+        "detect" => {
+            let lat: f64 = if args.len() == 4 {
+                f64::from_str(&args[3]).unwrap()
+            } else {
+                34.1
+            };
+            let lon = if args.len() == 5 {
+                f64::from_str(&args[4]).unwrap()
+            } else {
+                -119.35
+            };
+            let circle = Circle::new(2.0, lat, lon, 40.0);
+            loop {
+                let num_points = 100;
+
+                for i in 0..num_points {
+                    let angle = 2.0 * PI * (i as f64) / (num_points as f64);
+
+                    let (lat, long) = circle.calculate_coordinates(angle);
+                    let (next_lat, next_long) = circle
+                        .calculate_coordinates(2.0 * PI * ((i + 1) as f64) / (num_points as f64));
+                    let heading = circle.calculate_heading(lat, long, next_lat, next_long);
+                    let _ready = stream.ready(Interest::WRITABLE).await?;
+                    let distance = circle.calculate_distance(lat, long, next_lat, next_long);
+
+                    let speed = circle.calculate_speed(distance);
+                    // No need for async here, just write and sleep
+                    let st = SystemTime::now();
+                    let now = iso8601(&st);
+                    let tom = iso8601_plus(&st, 10);
+                    let msg = format!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<event how=\"m-d-a\" stale=\"{tom}\" start=\"{now}\" time=\"{now}\" type=\"a-u-S\" uid=\"{}\" version=\"2.0\">
+<point ce=\"500\" lat=\"{lat}\" lon=\"{long}\" hae=\"0.0\" le=\"100\"/>
+<detail>
+<_flow-tags_ Ss_X3_ASV_h53.ais=\"{now}\"/>
+<track course=\"{heading}\" speed=\"{speed}\" />
+</detail></event>",
+                        target_tcp_addr
+                    );
+
+                    debug!("XML: {}", msg);
+                    let result = stream.write_all(msg.as_bytes()).await;
+                    info!("XML write: success={:?}", result.is_ok());
+                    let millis = time::Duration::from_millis(5000);
+                    thread::sleep(millis);
+                }
+            }
+        }
         _ => {
-            println!("COD CoT generator: \nUsage: cot_sender [help|fake|gps] target_address:port");
+            println!("COD CoT generator: \nUsage: cot_sender [help|status|detect|gps] target_address:port");
             std::process::exit(exitcode::OK);
         }
     };
