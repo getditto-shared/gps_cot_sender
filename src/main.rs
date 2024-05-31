@@ -205,6 +205,53 @@ version=\"2.0\">
                 }
             }
         }
+        "image" => {
+            let lat: f64 = if args.len() == 4 {
+                f64::from_str(&args[3]).unwrap()
+            } else {
+                34.1
+            };
+            let lon = if args.len() == 5 {
+                f64::from_str(&args[4]).unwrap()
+            } else {
+                -119.35
+            };
+            let circle = Circle::new(2.0, lat, lon, 40.0);
+
+            let contents = std::fs::read_to_string("boat_sm.b64")
+                .expect("Should have been able to read boat b64 file");
+            let contents = contents.trim_end();
+            loop {
+                let num_points = 100;
+
+                for i in 0..num_points {
+                    let angle = 2.0 * PI * (i as f64) / (num_points as f64);
+
+                    let (lat, long) = circle.calculate_coordinates(angle);
+                    let _ready = stream.ready(Interest::WRITABLE).await?;
+
+                    // No need for async here, just write and sleep
+                    let st = SystemTime::now();
+                    let now = iso8601(&st);
+                    let tom = iso8601_plus(&st, 10);
+                    let msg = format!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<event how=\"m-d-a\" stale=\"{tom}\" start=\"{now}\" time=\"{now}\" type=\"a-u-S\" uid=\"{}\" version=\"2.0\">
+<point ce=\"500\" lat=\"{lat}\" lon=\"{long}\" hae=\"0.0\" le=\"100\"/>
+<detail>
+<_flow-tags_ Ss_X3_ASV_h53.ais=\"{now}\"/>
+<image mime=\"image/jpeg\" type=\"VIS\">{contents}</image></detail></event>",
+                        target_tcp_addr
+                    );
+
+                    debug!("XML: {}", msg);
+                    let result = stream.write_all(msg.as_bytes()).await;
+                    info!("XML write: success={:?}", result.is_ok());
+                    let millis = time::Duration::from_millis(10000);
+                    thread::sleep(millis);
+                }
+            }
+        }
         _ => {
             println!("COD CoT generator: \nUsage: cot_sender [help|status|detect|gps] target_address:port");
             std::process::exit(exitcode::OK);
