@@ -200,7 +200,7 @@ version=\"2.0\">
                     debug!("XML: {}", msg);
                     let result = stream.write_all(msg.as_bytes()).await;
                     info!("XML write: success={:?}", result.is_ok());
-                    let millis = time::Duration::from_millis(5000);
+                    let millis = time::Duration::from_millis(1000);
                     thread::sleep(millis);
                 }
             }
@@ -236,7 +236,7 @@ version=\"2.0\">
                     let tom = iso8601_plus(&st, 10);
                     let msg = format!(
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
-<event how=\"m-d-a\" stale=\"{tom}\" start=\"{now}\" time=\"{now}\" type=\"a-u-S\" uid=\"{}\" version=\"2.0\">
+<event how=\"b-d-i\" stale=\"{tom}\" start=\"{now}\" time=\"{now}\" type=\"a-u-S\" uid=\"{}\" version=\"2.0\">
 <point ce=\"500\" lat=\"{lat}\" lon=\"{long}\" hae=\"0.0\" le=\"100\"/>
 <detail>
 <_flow-tags_ Ss_X3_ASV_h53.ais=\"{now}\"/>
