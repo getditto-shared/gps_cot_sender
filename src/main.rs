@@ -126,6 +126,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let st = SystemTime::now();
                     let now = iso8601(&st);
                     let tom = iso8601_plus(&st, 10);
+                    let uid = target_tcp_addr.replace(":", "_");
                     let msg = format!(
                         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <event
@@ -144,7 +145,7 @@ version=\"2.0\">
 <point ce=\"5\" hae=\"0.0\" lat=\"{lat}\" le=\"0.5\" lon=\"{long}\" />
 </event>
 ",
-                        target_tcp_addr
+                        uid
                     );
 
                     debug!("XML: {}", msg);
@@ -186,6 +187,7 @@ version=\"2.0\">
                     let st = SystemTime::now();
                     let now = iso8601(&st);
                     let tom = iso8601_plus(&st, 10);
+                    let uid = target_tcp_addr.replace(":", "_");
                     let msg = format!(
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <event how=\"m-d-a\" stale=\"{tom}\" start=\"{now}\" time=\"{now}\" type=\"a-u-S\" uid=\"{}\" version=\"2.0\">
@@ -194,7 +196,7 @@ version=\"2.0\">
 <_flow-tags_ Ss_X3_ASV_h53.ais=\"{now}\"/>
 <track course=\"{heading}\" speed=\"{speed}\" />
 </detail></event>",
-                        target_tcp_addr
+                       uid
                     );
 
                     debug!("XML: {}", msg);
@@ -234,6 +236,7 @@ version=\"2.0\">
                     let st = SystemTime::now();
                     let now = iso8601(&st);
                     let tom = iso8601_plus(&st, 10);
+                    let uid = target_tcp_addr.replace(":", "_");
                     let msg = format!(
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <event how=\"b-d-i\" stale=\"{tom}\" start=\"{now}\" time=\"{now}\" type=\"a-u-S\" uid=\"{}\" version=\"2.0\">
@@ -241,7 +244,7 @@ version=\"2.0\">
 <detail>
 <_flow-tags_ Ss_X3_ASV_h53.ais=\"{now}\"/>
 <image mime=\"image/jpeg\" type=\"VIS\">{contents}</image></detail></event>",
-                        target_tcp_addr
+                       uid
                     );
 
                     debug!("XML: {}", msg);
